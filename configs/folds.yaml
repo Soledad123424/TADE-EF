@@ -1,0 +1,17 @@
+folds:
+  - name: fold_1
+    test:
+      - "35 500"
+      - "35 650"
+      - "35 680"
+  - name: fold_2
+    test:
+      - "35mm 500m 1 20m-s"
+      - "50 270"
+      - "50 500"
+  - name: fold_3
+    test:
+      - "50mm 500m 1 30m-s"
+      - "50mm 500m 1.1 10m-s"
+      - "50mm 500m 1.2 10m-s"
+

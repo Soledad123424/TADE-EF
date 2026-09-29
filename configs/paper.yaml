@@ -1,0 +1,57 @@
+window_ms: 20.0
+sensor_width: 1280
+sensor_height: 720
+
+candidate:
+  dilation_radius_px: 1
+  min_component_area_px: 9
+  min_width_px: 3
+  min_height_px: 3
+  min_events: 8
+  roi_padding_px: 2
+
+tracking:
+  lambda_iou: 0.5
+  lambda_distance: 0.5
+  max_center_distance_px: 60.0
+  max_cost: 0.9
+  max_missed_windows: 8
+  min_observations: 4
+  min_path_length_px: 2.0
+
+alignment:
+  history_ms: 1000.0
+  roi_margin_px: 4
+  huber_epsilon: 1.35
+  delta: 1.0e-9
+
+frequency:
+  short_window_ms: 100.0
+  update_interval_ms: 100.0
+  min_hz: 20.0
+  max_hz: 1200.0
+  step_hz: 20.0
+  harmonics: 4
+  harmonic_half_width_bins: 1
+  min_roi_events: 12
+  min_quadrant_events: 6
+  epsilon: 1.0e-12
+
+segmentation:
+  min_duration_ms: 300.0
+  max_duration_ms: 1000.0
+
+evidence:
+  classification_threshold: 0.5
+  decay: 0.95
+  drone_threshold: 0.42
+  non_drone_threshold: -1.0
+  non_drone_lock_ms: 1000.0
+  epsilon: 1.0e-6
+
+tabpfn:
+  version: "8.1.0"
+  checkpoint: "models/tabpfn-v2-classifier-v2_default.ckpt"
+  checkpoint_sha256: "cf8c519c01eaf1613ee91239006d57b1c806ff5f23ac1aeb1315ba1015210e49"
+  device: "cuda"
+
