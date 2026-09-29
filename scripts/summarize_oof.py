@@ -21,10 +21,17 @@ def main() -> None:
 
     import yaml
 
-    rows = read_csv(args.predictions)
+    probability_rows = read_csv(args.predictions)
+    rows = read_csv(args.evidence)
     labels = np.asarray([int(row["label"]) for row in rows])
-    scores = np.asarray([float(row["probability"]) for row in rows])
-    fixed = track_metrics(labels, scores, threshold=args.fixed_threshold)
+    scores = np.asarray([float(row["accumulated_evidence"]) for row in rows])
+    identities = np.asarray([row["identity"] == "drone" for row in rows])
+    fixed = track_metrics(
+        labels,
+        scores,
+        threshold=args.fixed_threshold,
+        predictions=identities,
+    )
     thresholds = np.unique(np.concatenate(([0.0], scores, [1.0])))
     sweep = [
         {"threshold": float(value), **track_metrics(labels, scores, threshold=float(value))}
@@ -41,17 +48,22 @@ def main() -> None:
                 "fold": index,
                 "test_recordings": " | ".join(fold["test"]),
                 "samples": int(mask.sum()),
-                **track_metrics(labels[mask], scores[mask], threshold=args.fixed_threshold),
+                **track_metrics(
+                    labels[mask],
+                    scores[mask],
+                    threshold=args.fixed_threshold,
+                    predictions=identities[mask],
+                ),
             }
         )
 
-    evidence_rows = read_csv(args.evidence)
-    identities: dict[str, int] = {}
-    for row in evidence_rows:
+    identity_counts: dict[str, int] = {}
+    for row in rows:
         identity = row["identity"]
-        identities[identity] = identities.get(identity, 0) + 1
+        identity_counts[identity] = identity_counts.get(identity, 0) + 1
     report = {
         "sample_count": len(rows),
+        "raw_probability_sample_count": len(probability_rows),
         "positive_count": int(labels.sum()),
         "negative_count": int((labels == 0).sum()),
         "fixed_threshold": args.fixed_threshold,
@@ -61,7 +73,9 @@ def main() -> None:
             "The best-F1 threshold is selected on OOF test predictions and must not "
             "be reported as a validation-selected operating point."
         ),
-        "evidence_identity_counts": identities,
+        "score_field": "accumulated_evidence",
+        "operating_decision": "locked identity equals drone",
+        "evidence_identity_counts": identity_counts,
     }
     args.output_dir.mkdir(parents=True, exist_ok=True)
     write_csv(args.output_dir / "fold_metrics_fixed_threshold.csv", fold_rows)

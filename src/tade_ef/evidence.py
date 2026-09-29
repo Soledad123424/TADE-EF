@@ -44,13 +44,20 @@ class EvidenceAccumulator:
     def update(self, probability: float, timestamp_us: int) -> EvidenceRecord:
         if not 0 <= probability <= 1:
             raise ValueError("Probability must be in [0, 1]")
-        if self.identity != "undecided":
-            return EvidenceRecord(timestamp_us, probability, 0.0, self.accumulated, self.identity, False)
         epsilon = self.config.epsilon
         probability = min(max(probability, epsilon), 1 - epsilon)
         threshold = min(max(self.config.classification_threshold, epsilon), 1 - epsilon)
         score = log(probability / (1 - probability)) - log(threshold / (1 - threshold))
         self.accumulated = self.config.decay * self.accumulated + score
+        if self.identity != "undecided":
+            return EvidenceRecord(
+                timestamp_us,
+                probability,
+                score,
+                self.accumulated,
+                self.identity,
+                False,
+            )
         if self.accumulated < self.config.drone_threshold:
             if self._below_drone_since_us is None:
                 self._below_drone_since_us = timestamp_us

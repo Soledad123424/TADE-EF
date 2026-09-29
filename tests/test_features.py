@@ -1,8 +1,8 @@
 import numpy as np
 
-from tade_ef.features import FeatureConfig, extract_segment_features
+from tade_ef.features import FeatureConfig, extract_segment_features, split_track
 from tade_ef.schema import FEATURE_NAMES
-from tade_ef.types import Box, TrackObservation
+from tade_ef.types import Box, Track, TrackObservation
 
 
 def _observations() -> list[TrackObservation]:
@@ -36,4 +36,32 @@ def test_segment_feature_vector_matches_paper_schema() -> None:
     assert len(features.values) == 36
     assert features.values["local_speed_mean_window_mean"] > 0
     assert np.isfinite(list(features.values.values())).all()
+
+
+def test_track_first_emits_at_300_ms_then_updates_causally() -> None:
+    observations = []
+    for index in range(76):
+        timestamp = index * 20_000
+        observations.append(
+            TrackObservation(
+                timestamp,
+                Box(index, 0, index + 4, 4),
+                np.asarray([index], dtype=float),
+                np.asarray([0.0]),
+                np.asarray([timestamp], dtype=np.int64),
+                np.asarray([1.0]),
+            )
+        )
+    segments = split_track(
+        Track(track_id=1, observations=observations),
+        min_duration_ms=300.0,
+        max_duration_ms=1000.0,
+        update_interval_ms=100.0,
+    )
+    assert [segment[-1].timestamp_us for segment in segments[:3]] == [
+        300_000,
+        400_000,
+        500_000,
+    ]
+    assert all(segment[-1].timestamp_us - segment[0].timestamp_us <= 1_000_000 for segment in segments)
 

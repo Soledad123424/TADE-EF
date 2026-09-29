@@ -41,24 +41,39 @@ def split_track(
     *,
     min_duration_ms: float,
     max_duration_ms: float,
+    update_interval_ms: float,
 ) -> list[list[TrackObservation]]:
-    if min_duration_ms < 0 or max_duration_ms < min_duration_ms:
+    if (
+        min_duration_ms <= 0
+        or max_duration_ms < min_duration_ms
+        or update_interval_ms <= 0
+    ):
         raise ValueError("Invalid segment duration limits")
     observations = sorted(track.observations, key=lambda item: item.timestamp_us)
     if not observations:
         return []
     max_duration_us = int(max_duration_ms * 1000.0)
     min_duration_us = int(min_duration_ms * 1000.0)
+    update_interval_us = int(update_interval_ms * 1000.0)
     segments: list[list[TrackObservation]] = []
-    current: list[TrackObservation] = []
-    for observation in observations:
-        if current and observation.timestamp_us - current[0].timestamp_us > max_duration_us:
-            if current[-1].timestamp_us - current[0].timestamp_us >= min_duration_us:
-                segments.append(current)
-            current = []
-        current.append(observation)
-    if current and current[-1].timestamp_us - current[0].timestamp_us >= min_duration_us:
-        segments.append(current)
+    track_start_us = observations[0].timestamp_us
+    next_update_us = track_start_us + min_duration_us
+    for end_index, observation in enumerate(observations):
+        if observation.timestamp_us < next_update_us:
+            continue
+        history_start_us = max(track_start_us, observation.timestamp_us - max_duration_us)
+        history = [
+            item
+            for item in observations[: end_index + 1]
+            if item.timestamp_us >= history_start_us
+        ]
+        if history[-1].timestamp_us - history[0].timestamp_us >= min_duration_us:
+            segments.append(history)
+        elapsed_after_first = observation.timestamp_us - (track_start_us + min_duration_us)
+        update_count = elapsed_after_first // update_interval_us + 1
+        next_update_us = (
+            track_start_us + min_duration_us + update_count * update_interval_us
+        )
     return segments
 
 

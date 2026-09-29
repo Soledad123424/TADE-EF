@@ -17,6 +17,15 @@ from tade_ef.tracking import TrackingConfig
 class SegmentConfig:
     min_duration_ms: float = 300.0
     max_duration_ms: float = 1000.0
+    update_interval_ms: float = 100.0
+
+    def __post_init__(self) -> None:
+        if self.min_duration_ms <= 0.0:
+            raise ValueError("Minimum segment duration must be positive")
+        if self.max_duration_ms < self.min_duration_ms:
+            raise ValueError("Maximum history must be at least the minimum duration")
+        if self.update_interval_ms <= 0.0:
+            raise ValueError("Segment update interval must be positive")
 
 
 @dataclass(frozen=True)

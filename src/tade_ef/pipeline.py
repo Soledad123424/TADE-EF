@@ -54,6 +54,7 @@ def extract_recording(
             track,
             min_duration_ms=config.segmentation.min_duration_ms,
             max_duration_ms=config.segmentation.max_duration_ms,
+            update_interval_ms=config.segmentation.update_interval_ms,
         )
         for segment_index, segment in enumerate(segments):
             features.append(

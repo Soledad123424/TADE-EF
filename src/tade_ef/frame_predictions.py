@@ -1,4 +1,4 @@
-"""Map segment-level OOF probabilities back to 20-ms trajectory boxes."""
+"""Map causal evidence states forward to 20-ms trajectory boxes."""
 
 from __future__ import annotations
 
@@ -26,12 +26,25 @@ def build_frame_predictions(
         frame_by_end = _frame_by_window_end(
             manifest_root / _safe_name(recording) / "manifest.csv"
         )
+        evidence_by_track: dict[int, list[dict[str, str]]] = defaultdict(list)
         for segment in segments:
             track_id = int(segment["parent_track_id"].rsplit(":", 1)[1])
-            start_us, end_us = int(segment["start_us"]), int(segment["end_us"])
-            for observation in tracks_by_id[track_id]:
+            evidence_by_track[track_id].append(segment)
+        for track_id, updates in evidence_by_track.items():
+            ordered_updates = sorted(updates, key=lambda item: int(item["end_us"]))
+            latest: dict[str, str] | None = None
+            update_index = 0
+            for observation in sorted(
+                tracks_by_id[track_id], key=lambda item: int(item["timestamp_us"])
+            ):
                 timestamp = int(observation["timestamp_us"])
-                if not start_us <= timestamp <= end_us:
+                while (
+                    update_index < len(ordered_updates)
+                    and int(ordered_updates[update_index]["end_us"]) <= timestamp
+                ):
+                    latest = ordered_updates[update_index]
+                    update_index += 1
+                if latest is None:
                     continue
                 frame_index = frame_by_end.get(timestamp)
                 if frame_index is None:
@@ -46,9 +59,10 @@ def build_frame_predictions(
                         "y1": observation["y1"],
                         "x2": observation["x2"],
                         "y2": observation["y2"],
-                        "score": float(segment["probability"]),
-                        "label": int(segment["label"]),
-                        "sample_id": segment["sample_id"],
+                        "score": float(latest["accumulated_evidence"]),
+                        "identity": latest["identity"],
+                        "label": int(latest["label"]),
+                        "sample_id": latest["sample_id"],
                     }
                 )
     return predictions

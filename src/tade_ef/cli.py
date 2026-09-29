@@ -47,9 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
     evidence.add_argument("--config", type=Path, default=Path("configs/paper.yaml"))
     evidence.add_argument("--output", type=Path, required=True)
 
-    evaluate = subparsers.add_parser("evaluate-track", help="Evaluate segment probabilities")
+    evaluate = subparsers.add_parser("evaluate-track", help="Evaluate track-level scores")
     evaluate.add_argument("predictions", type=Path)
     evaluate.add_argument("--threshold", type=float, default=0.5)
+    evaluate.add_argument("--score-field", default="probability")
+    evaluate.add_argument("--identity-field")
     evaluate.add_argument("--output", type=Path, required=True)
 
     migrate = subparsers.add_parser("migrate-labels", help="Map legacy labels to rebuilt tracks")
@@ -104,8 +106,13 @@ def main() -> None:
         rows = read_csv(args.predictions)
         metrics = track_metrics(
             np.asarray([int(row["label"]) for row in rows]),
-            np.asarray([float(row["probability"]) for row in rows]),
+            np.asarray([float(row[args.score_field]) for row in rows]),
             threshold=args.threshold,
+            predictions=(
+                None
+                if args.identity_field is None
+                else np.asarray([row[args.identity_field] == "drone" for row in rows])
+            ),
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(metrics, indent=2), encoding="utf-8")

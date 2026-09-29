@@ -7,6 +7,7 @@ def test_uav_evidence_locks_and_never_changes() -> None:
     assert first.identity == "drone"
     second = accumulator.update(0.01, 1_000_000)
     assert second.identity == "drone"
+    assert second.accumulated != first.accumulated
 
 
 def test_non_uav_requires_low_evidence_duration() -> None:

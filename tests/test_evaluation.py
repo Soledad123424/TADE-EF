@@ -35,3 +35,39 @@ def test_frame_metrics_accept_tied_prediction_scores() -> None:
     assert result["tp"] == 1.0
     assert result["fp"] == 1.0
 
+
+def test_locked_identity_controls_operating_point_but_not_ap_score() -> None:
+    ground_truth = [
+        {"recording_id": "r", "frame_index": 0, "x1": 0, "y1": 0, "x2": 10, "y2": 10}
+    ]
+    predictions = [
+        {
+            "recording_id": "r",
+            "frame_index": 0,
+            "x1": 0,
+            "y1": 0,
+            "x2": 10,
+            "y2": 10,
+            "score": -2.0,
+            "identity": "drone",
+        },
+        {
+            "recording_id": "r",
+            "frame_index": 0,
+            "x1": 20,
+            "y1": 20,
+            "x2": 30,
+            "y2": 30,
+            "score": 3.0,
+            "identity": "non_drone",
+        },
+    ]
+    result = frame_detection_metrics(
+        ground_truth,
+        predictions,
+        iou_threshold=0.5,
+        confidence_threshold=0.42,
+    )
+    assert result["tp"] == 1.0
+    assert result["fp"] == 0.0
+

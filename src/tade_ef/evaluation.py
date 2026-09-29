@@ -16,8 +16,10 @@ def track_metrics(
     scores: np.ndarray,
     *,
     threshold: float,
+    predictions: np.ndarray | None = None,
 ) -> dict[str, float]:
-    predictions = scores >= threshold
+    if predictions is None:
+        predictions = scores >= threshold
     precision, recall, f1, _ = precision_recall_fscore_support(
         labels,
         predictions,
@@ -47,19 +49,22 @@ def frame_detection_metrics(
     confidence_threshold: float,
 ) -> dict[str, float]:
     by_frame_gt: dict[tuple[str, int], list[Box]] = defaultdict(list)
-    by_frame_prediction: dict[tuple[str, int], list[tuple[float, Box]]] = defaultdict(list)
+    by_frame_prediction: dict[
+        tuple[str, int], list[tuple[float, bool, Box]]
+    ] = defaultdict(list)
     for row in ground_truth:
         by_frame_gt[(str(row["recording_id"]), int(row["frame_index"]))].append(_box(row))
     for row in predictions:
+        identity = str(row.get("identity", ""))
+        selected = identity == "drone" if identity else float(row["score"]) >= confidence_threshold
         by_frame_prediction[(str(row["recording_id"]), int(row["frame_index"]))].append(
-            (float(row["score"]), _box(row))
+            (float(row["score"]), selected, _box(row))
         )
     scores_and_labels: list[tuple[float, int]] = []
-    false_negatives = 0
     for frame in sorted(set(by_frame_gt) | set(by_frame_prediction)):
         gt = by_frame_gt[frame]
         used: set[int] = set()
-        for score, prediction in sorted(
+        for score, _, prediction in sorted(
             by_frame_prediction[frame],
             key=lambda item: item[0],
             reverse=True,
@@ -75,13 +80,33 @@ def frame_detection_metrics(
             if matched:
                 used.add(best_index)
             scores_and_labels.append((score, int(matched)))
-        false_negatives += len(gt) - len(used)
-    selected = [item for item in scores_and_labels if item[0] >= confidence_threshold]
-    true_positives = sum(label for _, label in selected)
-    false_positives = len(selected) - true_positives
+
+    true_positives = 0
+    false_positives = 0
+    for frame in sorted(set(by_frame_gt) | set(by_frame_prediction)):
+        gt = by_frame_gt[frame]
+        used: set[int] = set()
+        operating = [item for item in by_frame_prediction[frame] if item[1]]
+        for score, _, prediction in sorted(
+            operating,
+            key=lambda item: item[0],
+            reverse=True,
+        ):
+            candidates = [
+                (box_iou(prediction, truth), index)
+                for index, truth in enumerate(gt)
+                if index not in used
+            ]
+            best_iou, best_index = max(candidates, default=(0.0, -1))
+            if best_index >= 0 and best_iou >= iou_threshold:
+                used.add(best_index)
+                true_positives += 1
+            else:
+                false_positives += 1
     total_gt = sum(len(items) for items in by_frame_gt.values())
     recall = true_positives / total_gt if total_gt else 0.0
-    precision = true_positives / len(selected) if selected else 0.0
+    selected_count = true_positives + false_positives
+    precision = true_positives / selected_count if selected_count else 0.0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     ap = _interpolated_ap(scores_and_labels, total_gt)
     return {
@@ -92,7 +117,7 @@ def frame_detection_metrics(
         "tp": float(true_positives),
         "fp": float(false_positives),
         "fn": float(total_gt - true_positives),
-        "conditional_unmatched_gt": float(false_negatives),
+        "conditional_unmatched_gt": float(total_gt - true_positives),
     }
 
 
