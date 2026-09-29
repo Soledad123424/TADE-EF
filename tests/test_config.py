@@ -10,4 +10,6 @@ def test_paper_configuration_loads() -> None:
     assert config.evidence.classification_threshold == 0.5
     assert config.segmentation.min_duration_ms == 300.0
     assert config.segmentation.update_interval_ms == 100.0
+    assert config.features.alignment_history_ms == 1000.0
+    assert config.features.spectral_epsilon == 1.0e-12
 

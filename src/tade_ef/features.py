@@ -15,6 +15,7 @@ from tade_ef.types import SegmentFeatures, Track, TrackObservation
 
 @dataclass(frozen=True)
 class FeatureConfig:
+    alignment_history_ms: float = 1000.0
     short_window_ms: float = 100.0
     frequency_update_interval_ms: float = 100.0
     min_frequency_events: int = 12
@@ -24,8 +25,15 @@ class FeatureConfig:
     harmonics: int = 4
     harmonic_half_width_bins: int = 1
     min_quadrant_events: int = 6
+    spectral_epsilon: float = 1.0e-12
     huber_epsilon: float = 1.35
     delta: float = 1.0e-9
+
+    def __post_init__(self) -> None:
+        if self.alignment_history_ms <= 0:
+            raise ValueError("Alignment history must be positive")
+        if self.spectral_epsilon <= 0:
+            raise ValueError("Spectral epsilon must be positive")
 
     @property
     def frequencies_hz(self) -> np.ndarray:
@@ -106,8 +114,14 @@ def extract_segment_features(
 
     for end_index, current in enumerate(ordered):
         prefix = ordered[: end_index + 1]
+        alignment_start_us = current.timestamp_us - int(
+            config.alignment_history_ms * 1000.0
+        )
+        alignment_prefix = [
+            item for item in prefix if item.timestamp_us >= alignment_start_us
+        ]
         alignment = align_events(
-            prefix,
+            alignment_prefix,
             epsilon=config.huber_epsilon,
             delta=config.delta,
         )
@@ -129,6 +143,7 @@ def extract_segment_features(
                     harmonics=config.harmonics,
                     half_width_bins=config.harmonic_half_width_bins,
                     min_quadrant_events=config.min_quadrant_events,
+                    epsilon=config.spectral_epsilon,
                 )
                 last_frequency_us = current.timestamp_us
         if last_spectral is not None:

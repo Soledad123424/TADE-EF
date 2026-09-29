@@ -1,5 +1,6 @@
 import numpy as np
 
+import tade_ef.features as feature_module
 from tade_ef.features import FeatureConfig, extract_segment_features, split_track
 from tade_ef.schema import FEATURE_NAMES
 from tade_ef.types import Box, Track, TrackObservation
@@ -64,4 +65,53 @@ def test_track_first_emits_at_300_ms_then_updates_causally() -> None:
         500_000,
     ]
     assert all(segment[-1].timestamp_us - segment[0].timestamp_us <= 1_000_000 for segment in segments)
+
+
+def test_alignment_history_and_spectral_epsilon_are_applied(monkeypatch) -> None:
+    observations = _observations() * 3
+    observations = [
+        TrackObservation(
+            index * 20_000,
+            observation.box,
+            observation.event_x,
+            observation.event_y,
+            observation.event_t_us - observation.timestamp_us + index * 20_000,
+            observation.event_polarity,
+        )
+        for index, observation in enumerate(observations)
+    ]
+    alignment_spans = []
+    spectral_epsilons = []
+    original_align = feature_module.align_events
+    original_spectral = feature_module.extract_spectral_features
+
+    def recording_align(items, **kwargs):
+        alignment_spans.append(items[-1].timestamp_us - items[0].timestamp_us)
+        return original_align(items, **kwargs)
+
+    def recording_spectral(*args, **kwargs):
+        spectral_epsilons.append(kwargs["epsilon"])
+        return original_spectral(*args, **kwargs)
+
+    monkeypatch.setattr(feature_module, "align_events", recording_align)
+    monkeypatch.setattr(
+        feature_module,
+        "extract_spectral_features",
+        recording_spectral,
+    )
+    extract_segment_features(
+        observations,
+        recording_id="synthetic",
+        track_id=1,
+        segment_index=0,
+        config=FeatureConfig(
+            alignment_history_ms=200.0,
+            spectral_epsilon=3.0e-10,
+            min_frequency_events=8,
+            min_quadrant_events=1,
+        ),
+    )
+    assert max(alignment_spans) <= 200_000
+    assert spectral_epsilons
+    assert set(spectral_epsilons) == {3.0e-10}
 

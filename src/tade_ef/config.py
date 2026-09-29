@@ -53,6 +53,7 @@ def load_config(path: Path) -> PipelineConfig:
     evidence_payload = _mapping(payload, "evidence")
     tracking_payload["roi_margin_px"] = alignment_payload["roi_margin_px"]
     feature_payload = {
+        "alignment_history_ms": alignment_payload["history_ms"],
         "short_window_ms": frequency_payload["short_window_ms"],
         "frequency_update_interval_ms": frequency_payload["update_interval_ms"],
         "min_frequency_events": frequency_payload["min_roi_events"],
@@ -62,6 +63,7 @@ def load_config(path: Path) -> PipelineConfig:
         "harmonics": frequency_payload["harmonics"],
         "harmonic_half_width_bins": frequency_payload["harmonic_half_width_bins"],
         "min_quadrant_events": frequency_payload["min_quadrant_events"],
+        "spectral_epsilon": frequency_payload["epsilon"],
         "huber_epsilon": alignment_payload["huber_epsilon"],
         "delta": alignment_payload["delta"],
     }
