@@ -86,6 +86,11 @@ the columns `sample_id` and `label`. Valid labels are `drone` and `non_drone`.
 
 ## Three-Fold Training
 
+Frequency features use a 2 x 2 spatial power sum. After changing from the
+pooled ROI spectrum, regenerate the feature CSVs and rerun three-fold fitting
+before inference. Previously fitted models contain the pooled-spectrum training
+features and must not be mixed with spatial-spectrum test features.
+
 ```bash
 bash scripts/train_all_folds.sh \
   outputs/features \

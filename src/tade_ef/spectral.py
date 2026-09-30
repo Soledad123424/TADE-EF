@@ -1,4 +1,4 @@
-"""Short-term spectral and spatial-phase features, Eqs. (15)-(20)."""
+"""Short-term spatially resolved spectral and spatial-phase features."""
 
 from __future__ import annotations
 
@@ -30,6 +30,31 @@ def spectral_flatness(power: np.ndarray, epsilon: float = 1.0e-12) -> float:
     safe = power.astype(float) + epsilon
     arithmetic = float(np.mean(safe))
     return float(np.exp(np.mean(np.log(safe))) / arithmetic) if arithmetic > 0 else 1.0
+
+
+def spatial_power_spectrum(
+    x: np.ndarray,
+    y: np.ndarray,
+    times_s: np.ndarray,
+    polarity: np.ndarray,
+    frequencies_hz: np.ndarray,
+) -> np.ndarray:
+    """Sum quadrant powers, normalizing each response by all ROI events."""
+    power = np.zeros_like(frequencies_hz, dtype=float)
+    if times_s.size == 0:
+        return power
+    center_x, center_y = float(np.median(x)), float(np.median(y))
+    quadrant = (x >= center_x).astype(np.int8) + 2 * (y >= center_y).astype(np.int8)
+    total_events = float(times_s.size)
+    for quadrant_id in range(4):
+        selected = quadrant == quadrant_id
+        event_count = int(np.count_nonzero(selected))
+        if event_count == 0:
+            continue
+        response = ndft(times_s[selected], polarity[selected], frequencies_hz)
+        response *= event_count / total_events
+        power += np.abs(response) ** 2
+    return power
 
 
 def harmonic_alignment_score(
@@ -99,8 +124,7 @@ def extract_spectral_features(
         return SpectralResult(0.0, 1.0, 0.0, 0.0)
     times_s = (t_us.astype(float) - float(np.min(t_us))) / 1_000_000.0
     weights = np.where(polarity >= 0, 1.0, -1.0)
-    spectrum = ndft(times_s, weights, frequencies_hz)
-    power = np.abs(spectrum) ** 2
+    power = spatial_power_spectrum(x, y, times_s, weights, frequencies_hz)
     peak_index = int(np.argmax(power))
     peak = float(frequencies_hz[peak_index])
     flatness = spectral_flatness(power, epsilon)
