@@ -59,6 +59,11 @@ python scripts/extract_all_recordings.py \
 
 Each extraction also creates a `*_tracks.csv` file.
 
+Feature extraction uses up to four CPU worker processes for independent tracks.
+The bounded caches and vectorized harmonic search preserve the existing feature
+definitions. Spatial-spectrum feature CSVs and fitted models remain compatible;
+this engineering optimization does not require refitting.
+
 ## Label Migration
 
 Migrate legacy trajectory labels to the rebuilt tracks:

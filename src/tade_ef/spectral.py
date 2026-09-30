@@ -3,8 +3,30 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
+
+
+@lru_cache(maxsize=16)
+def _harmonic_windows(frequencies_bytes: bytes, harmonics: int, half_width: int):
+    frequencies = np.frombuffer(frequencies_bytes, dtype=np.float64)
+    windows = np.zeros((frequencies.size, harmonics, 2 * half_width + 1), dtype=int)
+    valid = np.zeros((frequencies.size, harmonics), dtype=bool)
+    for row, fundamental in enumerate(frequencies):
+        for harmonic in range(1, harmonics + 1):
+            target = float(fundamental * harmonic)
+            if target > float(frequencies[-1]):
+                break
+            index = int(np.argmin(np.abs(frequencies - target)))
+            start = max(0, index - half_width)
+            stop = min(frequencies.size, index + half_width + 1)
+            indices = np.arange(start, stop)
+            windows[row, harmonic - 1] = np.pad(
+                indices, (0, windows.shape[-1] - indices.size), mode="edge",
+            )
+            valid[row, harmonic - 1] = True
+    return windows, valid
 
 
 @dataclass(frozen=True)
@@ -66,19 +88,15 @@ def harmonic_alignment_score(
     epsilon: float,
 ) -> float:
     baseline = float(np.median(power) + epsilon)
-    best = 0.0
-    for fundamental in frequencies_hz:
-        peaks: list[float] = []
-        for harmonic in range(1, harmonics + 1):
-            target = float(fundamental * harmonic)
-            if target > float(frequencies_hz[-1]):
-                break
-            index = int(np.argmin(np.abs(frequencies_hz - target)))
-            start = max(0, index - half_width_bins)
-            stop = min(power.size, index + half_width_bins + 1)
-            peaks.append(float(np.max(power[start:stop])))
-        if peaks:
-            best = max(best, float(np.mean(peaks) / baseline))
+    if power.size == 0 or harmonics <= 0:
+        return 0.0
+    windows, valid = _harmonic_windows(
+        frequencies_hz.astype(np.float64).tobytes(), harmonics, half_width_bins,
+    )
+    peaks = np.where(valid, np.max(power[windows], axis=2), 0.0)
+    counts = np.count_nonzero(valid, axis=1)
+    scores = np.sum(peaks, axis=1) / np.maximum(counts, 1) / baseline
+    best = max(0.0, float(np.max(scores)))
     return float(np.log1p(best) * (1.0 - spectral_flatness(power, epsilon)))
 
 

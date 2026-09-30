@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from joblib import Parallel, delayed, parallel_config
 
 from tade_ef.candidates import detect_candidates, iter_event_windows
 from tade_ef.config import PipelineConfig
-from tade_ef.features import extract_segment_features, split_track
+from tade_ef.features import extract_track_features, split_track
 from tade_ef.io import load_events, write_features, write_tracks
 from tade_ef.tracking import TrackManager, is_valid_motion_track
 from tade_ef.types import SegmentFeatures, Track
@@ -31,7 +32,10 @@ def extract_recording(
     *,
     recording_id: str,
     config: PipelineConfig,
+    feature_workers: int = 4,
 ) -> tuple[list[Track], list[SegmentFeatures]]:
+    if feature_workers < 1:
+        raise ValueError("Feature workers must be positive")
     x, y, t_us, polarity = load_events(event_path)
     windows = iter_event_windows(
         x,
@@ -46,7 +50,7 @@ def extract_recording(
     for window in windows:
         manager.update(window, detect_candidates(window, config.candidate))
     tracks = manager.finalize()
-    features: list[SegmentFeatures] = []
+    tasks = []
     for track in tracks:
         if not is_valid_motion_track(track, config.tracking):
             continue
@@ -56,16 +60,16 @@ def extract_recording(
             max_duration_ms=config.segmentation.max_duration_ms,
             update_interval_ms=config.segmentation.update_interval_ms,
         )
-        for segment_index, segment in enumerate(segments):
-            features.append(
-                extract_segment_features(
-                    segment,
-                    recording_id=recording_id,
-                    track_id=track.track_id,
-                    segment_index=segment_index,
-                    config=config.features,
-                )
+        tasks.append((track.track_id, segments))
+    with parallel_config(backend="loky", inner_max_num_threads=1):
+        results = Parallel(n_jobs=min(feature_workers, max(1, len(tasks))))(
+            delayed(extract_track_features)(
+                segments, recording_id=recording_id, track_id=track_id,
+                config=config.features,
             )
+            for track_id, segments in tasks
+        )
+    features = [item for result in results for item in result]
     return tracks, features
 
 

@@ -3,14 +3,49 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import OrderedDict
 from math import acos, hypot
+from collections.abc import Callable
+from typing import TypeVar
 
 import numpy as np
 
-from tade_ef.alignment import align_events
+from tade_ef.alignment import AlignmentResult, align_events
 from tade_ef.schema import FEATURE_NAMES
 from tade_ef.spectral import SpectralResult, extract_spectral_features
 from tade_ef.types import SegmentFeatures, Track, TrackObservation
+
+_Key = TypeVar("_Key")
+_Value = TypeVar("_Value")
+
+
+class FeatureCache:
+    """Bounded, track-local memoization for identical observation prefixes."""
+
+    def __init__(self, config: FeatureConfig, max_entries: int = 128) -> None:
+        self.config = config
+        self.max_entries = max_entries
+        self.alignments: OrderedDict[tuple[int, ...], AlignmentResult] = OrderedDict()
+        self.dynamics: OrderedDict[tuple[int, ...], dict[str, float]] = OrderedDict()
+        self.elongations: OrderedDict[int, float] = OrderedDict()
+        self.observations: dict[int, TrackObservation] = {}
+        self.hits = 0
+        self.misses = 0
+
+    def get_or_compute(
+        self, store: OrderedDict[_Key, _Value], key: _Key,
+        compute: Callable[[], _Value],
+    ) -> _Value:
+        if key in store:
+            self.hits += 1
+            store.move_to_end(key)
+            return store[key]
+        self.misses += 1
+        value = compute()
+        store[key] = value
+        if len(store) > self.max_entries:
+            store.popitem(last=False)
+        return value
 
 
 @dataclass(frozen=True)
@@ -42,6 +77,21 @@ class FeatureConfig:
             self.frequency_max_hz + self.frequency_step_hz / 2.0,
             self.frequency_step_hz,
         )
+
+
+def extract_track_features(
+    segments: list[list[TrackObservation]], *, recording_id: str,
+    track_id: int, config: FeatureConfig,
+) -> list[SegmentFeatures]:
+    """Process one track with a private cache; safe for independent CPU workers."""
+    cache = FeatureCache(config)
+    return [
+        extract_segment_features(
+            segment, recording_id=recording_id, track_id=track_id,
+            segment_index=index, config=config, cache=cache,
+        )
+        for index, segment in enumerate(segments)
+    ]
 
 
 def split_track(
@@ -92,8 +142,14 @@ def extract_segment_features(
     track_id: int,
     segment_index: int,
     config: FeatureConfig,
+    cache: FeatureCache | None = None,
 ) -> SegmentFeatures:
+    if cache is not None and cache.config != config:
+        raise ValueError("Feature cache belongs to a different configuration")
     ordered = sorted(observations, key=lambda item: item.timestamp_us)
+    if cache is not None:
+        # Keep identities alive while memoized prefixes refer to them.
+        cache.observations.update((id(item), item) for item in ordered)
     if len(ordered) < 2:
         raise ValueError("A segment needs at least two observations")
 
@@ -120,10 +176,16 @@ def extract_segment_features(
         alignment_prefix = [
             item for item in prefix if item.timestamp_us >= alignment_start_us
         ]
-        alignment = align_events(
-            alignment_prefix,
-            epsilon=config.huber_epsilon,
-            delta=config.delta,
+        def compute_alignment():
+            return align_events(
+                alignment_prefix, epsilon=config.huber_epsilon, delta=config.delta,
+            )
+
+        alignment = (
+            compute_alignment() if cache is None else cache.get_or_compute(
+                cache.alignments, tuple(id(item) for item in alignment_prefix),
+                compute_alignment,
+            )
         )
         alignment_gains.append(alignment.gain)
         if alignment.t_us.size:
@@ -149,13 +211,26 @@ def extract_segment_features(
         if last_spectral is not None:
             spectral_results.append(last_spectral)
 
-        elongations.append(_elongation(current.event_x, current.event_y, config.delta))
+        def compute_elongation():
+            return _elongation(current.event_x, current.event_y, config.delta)
+
+        elongations.append(
+            compute_elongation() if cache is None else cache.get_or_compute(
+                cache.elongations, id(current), compute_elongation,
+            )
+        )
         areas = [float(item.box.area) for item in prefix]
         aspects = [item.box.width / item.box.height for item in prefix]
         elongation_cvs.append(_cv(elongations, config.delta))
         area_cvs.append(_cv(areas, config.delta))
         aspect_cvs.append(_cv(aspects, config.delta))
-        dynamics = _local_dynamics(prefix, config.delta)
+        dynamics = (
+            _local_dynamics(prefix, config.delta) if cache is None
+            else cache.get_or_compute(
+                cache.dynamics, tuple(id(item) for item in prefix),
+                lambda: _local_dynamics(prefix, config.delta),
+            )
+        )
         local_speed_means.append(dynamics["speed_mean"])
         local_speed_stds.append(dynamics["speed_std"])
         local_acceleration_means.append(dynamics["acceleration_mean"])

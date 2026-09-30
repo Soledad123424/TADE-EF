@@ -3,11 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
 from sklearn.linear_model import HuberRegressor
 
 from tade_ef.types import TrackObservation
+
+
+@lru_cache(maxsize=4096)
+def _fit_coordinate(times_bytes: bytes, target_bytes: bytes, epsilon: float) -> float:
+    """Memoize identical solver inputs, without changing the Huber estimator."""
+    times = np.frombuffer(times_bytes, dtype=np.float64).reshape(-1, 1)
+    # Match the original column view's stride, including its floating-point path.
+    targets = np.empty((times.shape[0], 2), dtype=np.float64)
+    targets[:, 0] = np.frombuffer(target_bytes, dtype=np.float64)
+    model = HuberRegressor(epsilon=epsilon, fit_intercept=True)
+    model.fit(times, targets[:, 0])
+    return float(model.coef_[0])
 
 
 @dataclass(frozen=True)
@@ -36,10 +49,11 @@ def fit_huber_velocity(
         return (0.0, 0.0)
     centers = np.asarray([item.box.center for item in observations], dtype=float)
     velocities = []
+    times_bytes = times.tobytes()
     for coordinate in range(2):
-        model = HuberRegressor(epsilon=epsilon, fit_intercept=True)
-        model.fit(times, centers[:, coordinate])
-        velocities.append(float(model.coef_[0]))
+        velocities.append(_fit_coordinate(
+            times_bytes, centers[:, coordinate].tobytes(), epsilon,
+        ))
     return (velocities[0], velocities[1])
 
 

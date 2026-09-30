@@ -1,7 +1,7 @@
 import numpy as np
 
 import tade_ef.features as feature_module
-from tade_ef.features import FeatureConfig, extract_segment_features, split_track
+from tade_ef.features import FeatureCache, FeatureConfig, extract_segment_features, split_track
 from tade_ef.schema import FEATURE_NAMES
 from tade_ef.types import Box, Track, TrackObservation
 
@@ -114,4 +114,31 @@ def test_alignment_history_and_spectral_epsilon_are_applied(monkeypatch) -> None
     assert max(alignment_spans) <= 200_000
     assert spectral_epsilons
     assert set(spectral_epsilons) == {3.0e-10}
+
+
+def test_cached_updates_match_reference_across_sliding_boundary() -> None:
+    base = _observations()
+    observations = [
+        TrackObservation(
+            index * 20_000, base[index % len(base)].box,
+            base[index % len(base)].event_x, base[index % len(base)].event_y,
+            base[index % len(base)].event_t_us
+            - base[index % len(base)].timestamp_us + index * 20_000,
+            base[index % len(base)].event_polarity,
+        )
+        for index in range(76)
+    ]
+    config = FeatureConfig(min_frequency_events=8, min_quadrant_events=1)
+    cache = FeatureCache(config, max_entries=64)
+    segments = split_track(
+        Track(track_id=1, observations=observations),
+        min_duration_ms=300, max_duration_ms=1000, update_interval_ms=100,
+    )
+    for index, segment in enumerate(segments):
+        kwargs = dict(recording_id="test", track_id=1, segment_index=index, config=config)
+        reference = extract_segment_features(segment, **kwargs)
+        cached = extract_segment_features(segment, cache=cache, **kwargs)
+        assert reference == cached
+    assert cache.hits > 0
+    assert max(len(cache.alignments), len(cache.dynamics), len(cache.elongations)) <= 64
 
