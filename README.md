@@ -111,6 +111,46 @@ outputs/tabpfn_oof/oof_predictions.csv
 
 ## Evaluation
 
+### Sequential Replay
+
+Replay an NPZ recording window by window using a fitted spatial-spectrum model:
+
+```bash
+tade-ef-replay /path/to/recording.npz \
+  --recording-id "35 500" \
+  --model outputs/tabpfn_oof/fold_1/model.tabpfn_fit \
+  --checkpoint models/tabpfn-v2-classifier-v2_default.ckpt \
+  --config configs/paper.yaml \
+  --output outputs/replay/35_500 \
+  --paced
+```
+
+Use the held-out fold's model for cross-validation. Omit `--paced` to process
+windows sequentially as quickly as possible; use `--device cpu` for CPU inference.
+The output directory must not already exist. Server-cache NPZ arrays `t` and `p`
+are also accepted in place of `t_us` and `polarity`.
+
+Outputs are flushed after each window: `boxes.csv` retains candidate boxes,
+`updates.csv` retains probabilities and accumulated evidence, and `windows.csv`
+retains processing time and paced waiting/completion delays. Box `score` is
+accumulated evidence. Filter `identity == drone` for locked UAV detections;
+`has_evidence == False` denotes a candidate awaiting its first feature update.
+No later label is backfilled into earlier frames.
+
+The first eligible feature update occurs at/after 300 ms of observed track history,
+followed by 100-ms updates with at most 1000 ms of retained history. Motion
+eligibility is checked using only past observations. These are feature-update
+times, not guaranteed firm-label or wall-clock detection times. Existing evidence
+thresholds and permanent identity locking are unchanged.
+
+Paced replay releases complete 20-ms windows at their event-time deadlines without
+dropping windows when processing falls behind. This is recorded-event replay, not
+a live-camera driver or a guarantee of real-time throughput. Decoded NPZ input
+remains resident in memory; active track histories/caches are pruned. Small-batch
+TabPFN probabilities can differ slightly from recording-level batch predictions.
+
+### Batch Evaluation
+
 Run trajectory-level and frame-level evaluation:
 
 ```bash
