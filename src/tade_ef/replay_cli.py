@@ -39,11 +39,17 @@ def main():
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--config", type=Path, default=Path("configs/paper.yaml"))
+    parser.add_argument("--fold", choices=["fold_1", "fold_2", "fold_3"],
+                        help="Evidence threshold fold; defaults to the model's fold_* directory")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--paced", action="store_true")
     args = parser.parse_args()
-    config = load_config(args.config)
+    fold = args.fold or next((part for part in reversed(args.model.parts)
+                             if part in {"fold_1", "fold_2", "fold_3"}), None)
+    config = load_config(args.config, fold=fold)
+    if config.evidence.drone_threshold_by_fold:
+        parser.error("Use --fold when the model path does not contain a fold_* directory")
     checksum = hashlib.sha256(args.checkpoint.read_bytes()).hexdigest()
     if checksum != config.tabpfn["checkpoint_sha256"]:
         raise ValueError("Checkpoint checksum differs from the configured model")

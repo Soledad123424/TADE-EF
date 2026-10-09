@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 from tade_ef.config import load_config
 from tade_ef.dataset import load_labeled_dataset
@@ -45,6 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     evidence = subparsers.add_parser("evidence", help="Apply Eqs. (25)-(27) to OOF probabilities")
     evidence.add_argument("oof_predictions", type=Path)
     evidence.add_argument("--config", type=Path, default=Path("configs/paper.yaml"))
+    evidence.add_argument("--folds", type=Path, default=Path("configs/folds.yaml"))
     evidence.add_argument("--output", type=Path, required=True)
 
     evaluate = subparsers.add_parser("evaluate-track", help="Evaluate track-level scores")
@@ -95,10 +97,20 @@ def main() -> None:
         print(f"OOF predictions written to {args.output_dir}")
         return
     if args.command == "evidence":
+        config = load_config(args.config)
+        recording_folds = {}
+        if config.evidence.drone_threshold_by_fold:
+            payload = yaml.safe_load(args.folds.read_text(encoding="utf-8"))
+            for index, fold in enumerate(payload["folds"], start=1):
+                for recording in fold["test"]:
+                    if recording in recording_folds:
+                        raise ValueError("A recording appears in multiple test folds")
+                    recording_folds[recording] = fold.get("name", f"fold_{index}")
         rows = apply_evidence_to_oof(
             args.oof_predictions,
             args.output,
-            load_config(args.config).evidence,
+            config.evidence,
+            recording_folds=recording_folds,
         )
         print(f"Wrote {len(rows)} chronological evidence records")
         return

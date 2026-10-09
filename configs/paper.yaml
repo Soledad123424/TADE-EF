@@ -46,8 +46,12 @@ evidence:
   classification_threshold: 0.5
   decay: 0.95
   drone_threshold: 0.42
-  non_drone_threshold: -1.0
-  non_drone_lock_ms: 1000.0
+  drone_threshold_by_fold:
+    fold_1: 0.42
+    fold_2: 0.45
+    fold_3: 0.36
+  non_drone_threshold: 0.1
+  non_drone_lock_ms: 500.0
   epsilon: 1.0e-6
 
 tabpfn:

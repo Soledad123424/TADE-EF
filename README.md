@@ -130,6 +130,14 @@ windows sequentially as quickly as possible; use `--device cpu` for CPU inferenc
 The output directory must not already exist. Server-cache NPZ arrays `t` and `p`
 are also accepted in place of `t_us` and `polarity`.
 
+UAV evidence thresholds are 0.42, 0.45 and 0.36 for `fold_1`, `fold_2` and
+`fold_3`, respectively. Replay selects the threshold from the model's `fold_*`
+directory; use `--fold fold_2` explicitly for a model stored elsewhere.
+OOF evidence processing selects the fold using `configs/folds.yaml` (override
+with `tade-ef evidence ... --folds /path/to/folds.yaml`). Non-UAV evidence
+threshold is 0.1 and lock duration is 500 ms. These are evidence thresholds,
+not probability cutoffs; the probability threshold remains 0.5.
+
 Outputs are flushed after each window: `boxes.csv` retains candidate boxes,
 `updates.csv` retains probabilities and accumulated evidence, and `windows.csv`
 retains processing time and paced waiting/completion delays. Box `score` is

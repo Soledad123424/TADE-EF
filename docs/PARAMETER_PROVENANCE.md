@@ -13,12 +13,12 @@ paper-specified values.
 | association distance | 60 px | archived experiment configuration |
 | minimum segment / maximum segment | 300/1000 ms | archived experiment configuration |
 | evidence decay | 0.95 | archived experiment configuration |
-| UAV evidence threshold | 0.42 | submitted manuscript, Sec. IV-A3 |
+| UAV evidence threshold | fold_1: 0.42; fold_2: 0.45; fold_3: 0.36 | user-requested revision, 2026-10-09; replaces fixed 0.42 |
 | IoU/distance weights | 0.5/0.5 | explicit implementation choice; manuscript omits values |
 | association maximum cost | 0.9 | explicit implementation choice; manuscript omits value |
 | classification threshold | 0.5 | neutral implementation choice; distinct from evidence threshold |
-| Non-UAV evidence threshold | -1.0 | archived experiment configuration |
-| Non-UAV lock duration | 1000 ms | archived maximum segment duration |
+| Non-UAV evidence threshold | 0.1 | user-requested revision, 2026-10-09 |
+| Non-UAV lock duration | 500 ms | user-requested revision, 2026-10-09; independent of maximum history |
 | Huber epsilon | 1.35 | scikit-learn default; manuscript omits value |
 
 Any tuned replacement must create a new configuration file and must not

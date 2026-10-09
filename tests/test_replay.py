@@ -21,7 +21,7 @@ class Model:
 
 
 def config():
-    cfg = load_config(Path(__file__).parents[1] / "configs/paper.yaml")
+    cfg = load_config(Path(__file__).parents[1] / "configs/paper.yaml", fold="fold_1")
     return replace(cfg, sensor_width=200, sensor_height=100)
 
 

@@ -1,6 +1,15 @@
 from tade_ef.evidence import EvidenceAccumulator, EvidenceConfig
 
 
+def test_revised_non_uav_threshold_and_500ms_lock() -> None:
+    accumulator = EvidenceAccumulator(EvidenceConfig())
+    assert accumulator.update(0.5, 0).identity == "undecided"
+    assert accumulator.update(0.5, 499999).identity == "undecided"
+    record = accumulator.update(0.5, 500000)
+    assert record.accumulated == 0.0
+    assert record.identity == "non_drone" and record.locked_now
+
+
 def test_uav_evidence_locks_and_never_changes() -> None:
     accumulator = EvidenceAccumulator(EvidenceConfig(drone_threshold=0.2))
     first = accumulator.update(0.9, 0)

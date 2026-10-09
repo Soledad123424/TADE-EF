@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from math import log
 
 
@@ -11,9 +11,10 @@ class EvidenceConfig:
     classification_threshold: float = 0.5
     decay: float = 0.95
     drone_threshold: float = 0.42
-    non_drone_threshold: float = -1.0
-    non_drone_lock_ms: float = 1000.0
+    non_drone_threshold: float = 0.1
+    non_drone_lock_ms: float = 500.0
     epsilon: float = 1.0e-6
+    drone_threshold_by_fold: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not 0 < self.classification_threshold < 1:
@@ -22,6 +23,22 @@ class EvidenceConfig:
             raise ValueError("Evidence decay must be in [0, 1]")
         if self.non_drone_threshold >= self.drone_threshold:
             raise ValueError("Non-UAV threshold must be below UAV threshold")
+        for fold, threshold in self.drone_threshold_by_fold.items():
+            if fold not in {"fold_1", "fold_2", "fold_3"}:
+                raise ValueError(f"Unknown evidence fold: {fold}")
+            if self.non_drone_threshold >= threshold:
+                raise ValueError("Non-UAV threshold must be below every fold UAV threshold")
+
+    def for_fold(self, fold: str | int | None) -> "EvidenceConfig":
+        if not self.drone_threshold_by_fold:
+            return self
+        key = str(fold)
+        if key in {"1", "2", "3"}:
+            key = f"fold_{key}"
+        if key not in self.drone_threshold_by_fold:
+            raise ValueError("Fold-specific UAV thresholds require fold_1, fold_2 or fold_3")
+        return replace(self, drone_threshold=self.drone_threshold_by_fold[key],
+                       drone_threshold_by_fold={})
 
 
 @dataclass(frozen=True)
@@ -36,6 +53,8 @@ class EvidenceRecord:
 
 class EvidenceAccumulator:
     def __init__(self, config: EvidenceConfig) -> None:
+        if config.drone_threshold_by_fold:
+            raise ValueError("Resolve the fold-specific evidence configuration before accumulation")
         self.config = config
         self.accumulated = 0.0
         self.identity = "undecided"

@@ -41,7 +41,7 @@ class PipelineConfig:
     tabpfn: dict[str, object]
 
 
-def load_config(path: Path) -> PipelineConfig:
+def load_config(path: Path, *, fold: str | int | None = None) -> PipelineConfig:
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("Configuration root must be a mapping")
@@ -75,7 +75,8 @@ def load_config(path: Path) -> PipelineConfig:
         tracking=TrackingConfig(**tracking_payload),
         features=FeatureConfig(**feature_payload),
         segmentation=SegmentConfig(**segment_payload),
-        evidence=EvidenceConfig(**evidence_payload),
+        evidence=(EvidenceConfig(**evidence_payload) if fold is None
+                  else EvidenceConfig(**evidence_payload).for_fold(fold)),
         tabpfn=dict(_mapping(payload, "tabpfn")),
     )
 
