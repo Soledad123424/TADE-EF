@@ -31,8 +31,25 @@ tade-ef extract /path/to/recording.npz \
   --output outputs/features/recording_001/recording_001_features.csv
 ```
 
-Extraction also produces a `*_tracks.csv` file. Prepare `*_labels.csv` files
-with `sample_id` and `label` columns; valid labels are `drone` and `non_drone`.
+Extraction also produces a `*_tracks.csv` file.
+
+## Track-Segment Labeling
+
+1. Open `*_features.csv` and identify each segment by `sample_id`, `track_id`,
+   `start_us`, and `end_us` (timestamps are in microseconds).
+2. Inspect the corresponding event interval and boxes in `*_tracks.csv`.
+   Assign `drone` to UAV segments and `non_drone` to non-UAV segments.
+   Leave uncertain segments unlabeled; do not label from model predictions alone.
+3. Save a `*_labels.csv` file under your label directory. Copy each `sample_id`
+   exactly from the feature CSV, for example:
+
+```csv
+sample_id,label
+recording_001:1:000,drone
+recording_001:2:000,non_drone
+```
+
+Only feature samples with a matching valid label are used for training.
 
 ## Training
 
@@ -68,7 +85,26 @@ and `windows.csv`; UAV predictions have `identity == drone`.
 
 ## Evaluation
 
-Run trajectory-level and frame-level evaluation using CVAT box annotations:
+### Track-Level Evaluation
+
+Evaluate labeled track segments without frame annotations:
+
+```bash
+bash scripts/evaluate_all_folds.sh \
+  outputs/tabpfn_oof/oof_predictions.csv \
+  outputs/features \
+  "" \
+  outputs/evaluation
+```
+
+`track_metrics.json` contains precision, recall, F1, F2, and APtrack.
+P/R/F1/F2 use the evidence-based UAV identity; APtrack uses accumulated evidence.
+`fold_metrics_fixed_threshold.csv` contains per-fold results, and
+`oof_evidence.csv` retains the sample-level evidence and identities.
+
+### Frame-Level Evaluation
+
+Add CVAT UAV box annotations to run both track-level and frame-level evaluation:
 
 ```bash
 bash scripts/evaluate_all_folds.sh \
@@ -78,5 +114,13 @@ bash scripts/evaluate_all_folds.sh \
   outputs/evaluation
 ```
 
-Metrics are saved under the evaluation directory. For CPU training, set
-`tabpfn.device` to `cpu` in `configs/paper.yaml`.
+For each recording, the annotation directory must contain
+`annotations/recording_001_annotations.zip` (CVAT XML with label `drone`) and
+`recording_001/manifest.csv`, mapping frame indices to event-window timestamps.
+The manifest must include `frame_index` and `window_end_timestamp_us`.
+For recording IDs containing spaces, use underscores in these paths.
+
+`frame_metrics.json` contains detection metrics at IoU 0.3 and 0.5;
+`frame_predictions.csv` retains the evaluated boxes and scores.
+
+For CPU training, set `tabpfn.device` to `cpu` in `configs/paper.yaml`.
